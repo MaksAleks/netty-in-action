@@ -54,7 +54,12 @@ public class EchoServerHandler extends ChannelInboundHandlerAdapter {
          * A ChannelFutureListener that closes the Channel which is
          * associated with the specified ChannelFuture.
          */
-        channelFuture.addListener(ChannelFutureListener.CLOSE);
+//        channelFuture.addListener(ChannelFutureListener.CLOSE);
+    }
+
+    @Override
+    public void channelInactive(ChannelHandlerContext ctx) throws Exception {
+        System.out.println("Channel " + ctx.channel().remoteAddress() + " was closed");
     }
 
     @Override
