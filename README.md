@@ -22,6 +22,8 @@
 - A `Channel` is registered for its lifetime with a single `EventLoop`
 - One `EventLoop` may be assigned to one or more `Channel`
 
+![EventLoopGroup](./resources/EventLoopGroup.png)
+
 ### Channel Handlers and Channel Pipeline
 
 - `ChannelHandler` is the container where your application business logic will reside.  
@@ -117,4 +119,122 @@ A server needs two distinct sets of channels:
  - First set will contain a single `ServerChannel`, bound to a local port
  - Second set will contain new `Channel`s, representing new incoming connections
 
-![Different EventLoopGroups for Server and Client bootstraps](./resources/Bootstrapping.png))
+![Different EventLoopGroups for Server and Client bootstraps](./resources/Bootstrapping.png)
+
+## Channel Lifecycle
+
+Channel has for states:
+- **ChannelUnregistered**  
+  The Channel was created, but isn’t registered to an EventLoop
+
+- **ChannelRegistered**  
+  The Channel is registered to an EventLoop
+
+- **ChannelActive**  
+  The Channel is active (connected to its remote peer).
+  It’s now possible to receive and send data.
+
+- **ChannelInactive**  
+  The Channel isn’t connected to the remote peer
+
+Normal lifecycle goes in the following order:  
+ unregistered -> registered -> active -> inactive
+
+As these state changes occur, corresponding events are forwarded  
+to registered `ChannelHandler`s
+
+### ChannelInboundHandler events
+
+When a ChannelInboundHandler implementation overrides `channelRead()`,  
+it is responsible for explicitly releasing the memory associated with pooled ByteBuf instances.
+
+```java
+
+@Sharable
+public class DiscardHandler extends ChannelInboundHandlerAdapter {
+    @Override
+    public void channelRead(ChannelHandlerContext ctx, Object msg) {
+        ReferenceCountUtil.release(msg);
+    }
+}
+```
+
+Netty logs unreleased resources with a WARN-level log message.  
+But managing resources in this way can be cumbersome.  
+A simpler alternative is to use SimpleChannelInboundHandler,  
+because SimpleChannelInboundHandler releases resources automatically.
+
+```java
+@Sharable
+public class SimpleDiscardHandler extends SimpleChannelInboundHandler<Object> {
+    @Override
+    public void channelRead0(ChannelHandlerContext ctx, Object msg) {
+        // No need to do anything special
+    }
+}
+```
+
+### ChannelOutboundHandler events
+
+A powerful capability of `ChannelOutboundHandler` is ___to defer an operation or event on demand___,  
+which allows for sophisticated approaches to request handling. If writing to the remote peer is suspended,  
+for example, you can defer flush operations and resume them later.  
+
+### Resource management
+
+Netty uses reference counting to handle pooled `ByteBufs`.  
+So it’s important to adjust the reference count after you have finished using a `ByteBuf`.
+
+To assist you in diagnosing potential problems, Netty provides class `ResourceLeakDetector`,  
+which will sample about 1% of your application’s buffer allocations to check for memory leaks.  
+The overhead involved is very small.
+
+#### Leak Detection Levels
+
+- **DISABLED**: Disables leak detection. Use this only after extensive testing.
+- **SIMPLE**: Reports any leaks found using the default sampling rate of 1%. This is the default level and is a good fit for most cases.
+- **ADVANCED**: Reports leaks found and where the message was accessed. Uses the default sampling rate.
+- **PARANOID**: Like ADVANCED except that every access is sampled. This has a heavy impact on performance and should be used only in the debugging phase.
+
+The leak-detection level is defined by setting the following Java system property:  
+`java -Dio.netty.leakDetectionLevel=ADVANCED`
+
+### Channel Pipeline
+
+Normally each `ChannelHandler` in the `ChannelPipeline` processes events that are passed to it by its EventLoop (the I/O thread).  
+It’s critically important not to block this thread as it would have a negative effect on the overall handling of I/O.  
+
+Sometimes it may be necessary to interface with legacy code that uses blocking APIs.  
+For this case, the ChannelPipeline has `add()` methods that accept an `EventExecutorGroup`.  
+If an event is passed to a custom `EventExecutorGroup`, it will be handled by one of the `EventExecutor`s
+contained in this EventExecutorGroup and thus be removed from the EventLoop of the `Channel` itself.   
+For this use case Netty provides an implementation called `DefaultEventExecutorGroup`.  
+
+```java
+ServerBootstrap bootstrap = new ServerBootstrap();
+b.childHandler(new ChannelInitializer<SocketChannel>() {
+    @Override
+    protected void initChannel(SocketChannel ch) {
+        ch.pipeline().addLast(new DefaultEventExecutorGroup(1), new EchoServerHandler());
+    }
+});
+```
+
+### ChannelHandlerContext
+
+`ChannelHandlerContext` represents the relation between a `ChannelHandler` and a `ChannelPipeline` where the handler was registered.  
+
+`ChannelHandlerContext` contains some methods which are the same as in `ChannelHandler` and `ChannelPipeline`.  
+The difference is, that when you invoke these methods on `ChannelHandler` or `ChannelPipeline`, they propagate  
+through the entire pipeline.
+The same methods on `ChannelHandlerContext` will start at the current associated `ChannelHandler`  
+and propagate only to the next `ChannelHandler`.
+
+**!NOTE!:** The `ChannelHandlerContext` associated with a `ChannelHandler` never changes,  
+so it’s safe to cache a reference to it.
+
+![ChannelHandlerContext](./resources/ChannelHandlerContexts.png)
+
+## Event Loop
+
+
