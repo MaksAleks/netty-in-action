@@ -42,7 +42,7 @@ public class EchoServer {
                     .childHandler(new ChannelInitializer<SocketChannel>() {
                         @Override
                         protected void initChannel(SocketChannel ch) {
-                            ch.pipeline().addLast(new DefaultEventExecutorGroup(1), new EchoServerHandler());
+                            ch.pipeline().addLast(new EchoServerHandler());
                         }
                     });
             ChannelFuture future = bootstrap.bind().sync(); // binds the server - it starts listening on the specified port

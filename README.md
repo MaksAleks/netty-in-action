@@ -236,5 +236,3 @@ so it’s safe to cache a reference to it.
 ![ChannelHandlerContext](./resources/ChannelHandlerContexts.png)
 
 ## Event Loop
-
-

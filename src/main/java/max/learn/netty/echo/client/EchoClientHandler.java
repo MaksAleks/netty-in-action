@@ -7,6 +7,7 @@ import io.netty.channel.ChannelHandler.Sharable;
 import max.learn.netty.echo.server.EchoServerHandler;
 
 import java.nio.charset.StandardCharsets;
+import java.util.concurrent.CompletableFuture;
 
 /**
  * {@link SimpleChannelInboundHandler} vs. {@link ChannelInboundHandler}
